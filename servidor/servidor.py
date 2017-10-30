@@ -11,8 +11,19 @@ import socket
 import sys
 from threading import Thread
 import time
+import re
 
-PATH_URL = sys.argv[1]
+
+def split_http_msg(msg):
+    msg = msg.split('\n')
+    URL = re.search('GET(.*)HTTP/1.1', msg[0])
+    URL = URL.group(1)
+    HOST = msg[1].split('Host: ', 1)[1]
+
+    return URL.strip(), HOST.strip()
+
+
+SERVER_URL = sys.argv[1]
 TCP_IP = socket.gethostname()
 BUFFER_SIZE = 1024
 
@@ -28,20 +39,25 @@ class ClientThread(Thread):
         self.ip = ip
         self.port = port
         self.conn = conn
-        print('[+] Nova thread por ' + ip + ' na porta ' + str(port))
+        print('[+] Nova thread por {0} na porta {1}'.format(ip, str(port)))
 
     def run(self):
-        URL_RCV = self.conn.recv(BUFFER_SIZE)
-        URL_RCV = URL_RCV.decode('utf-8')
-        FILE_PATH = PATH_URL + "/" + URL_RCV
-        print('URL solicitada pelo navegador (cliente): ' + URL_RCV)
+        HTTP_MSG_RCV = self.conn.recv(BUFFER_SIZE)
+        HTTP_MSG_RCV = HTTP_MSG_RCV.decode('utf-8')
+        URL, HOST = split_http_msg(HTTP_MSG_RCV)
+        print('\nMensagem recebida do cliente {0}:\n{1}\n'.format(ip, HTTP_MSG_RCV))
+
+        # URL_RCV = URL_RCV.decode('utf-8')
+        FILE_PATH = SERVER_URL + '/' + HOST + '/' + URL
+        # print('[debug] FILE_PATH = {0}'.format(FILE_PATH))
+        time.sleep(0.1)
 
         try:
             f = open(FILE_PATH, 'rb')
             l = f.read(BUFFER_SIZE)
             # Envia código de estado + frase
-            self.conn.sendall('200 OK'.encode('utf-8'))
-            time.sleep(0.1)
+            self.conn.sendall('HTTP/1.1 200 OK\nServer: Apache/2.2.34'.encode('utf-8'))
+            time.sleep(0.2)
 
             while l:
                 # print('Enviando arquivo solicitado...')
@@ -54,8 +70,8 @@ class ClientThread(Thread):
                     break
         except (OSError, IOError) as e:
             # Envia código de estado + frase
-            print('[-] Arquivo solicitado não existe; enviando mensagem de erro 404.\n')
-            self.conn.sendall('404 Not Found'.encode('utf-8'))
+            print('[-] Arquivo solicitado não existe; enviando mensagem de erro.\n')
+            self.conn.sendall('HTTP/1.1 404 Not Found\nServer: Apache/2.2.34'.encode('utf-8'))
             self.conn.close()
 
 
@@ -68,7 +84,7 @@ print('Server escutando...')
 
 while True:
     tcp_sock.listen(5)
-    print('Esperando por conexões...')
+    print('[...] Esperando por conexões...')
 
     (conn, (ip, port)) = tcp_sock.accept()  # Estabelece conexao com o cliente
     print('Conexão feita por ', (ip, port))
